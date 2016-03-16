@@ -6,6 +6,8 @@ import (
 	uurl "net/url"
 	"time"
 
+	"os"
+
 	"github.com/influxdata/influxdb/client"
 	"github.com/rcrowley/go-metrics"
 )
@@ -13,6 +15,8 @@ import (
 type reporter struct {
 	reg      metrics.Registry
 	interval time.Duration
+
+	tagHost bool
 
 	url      uurl.URL
 	database string
@@ -23,7 +27,7 @@ type reporter struct {
 }
 
 // InfluxDB starts a InfluxDB reporter which will post the metrics from the given registry at each d interval.
-func InfluxDB(r metrics.Registry, d time.Duration, url, database, username, password string) {
+func InfluxDB(r metrics.Registry, d time.Duration, url, database, username, password string, tagHost bool) {
 	u, err := uurl.Parse(url)
 	if err != nil {
 		log.Printf("unable to parse InfluxDB url %s. err=%v", url, err)
@@ -33,6 +37,7 @@ func InfluxDB(r metrics.Registry, d time.Duration, url, database, username, pass
 	rep := &reporter{
 		reg:      r,
 		interval: d,
+		tagHost:  tagHost,
 		url:      *u,
 		database: database,
 		username: username,
@@ -82,8 +87,22 @@ func (r *reporter) run() {
 func (r *reporter) send() error {
 	var pts []client.Point
 
+	host := ""
+
+	if r.tagHost {
+		hostName, err := os.Hostname()
+		if err != nil {
+			return err
+		}
+
+		host = hostName + "."
+	}
+
 	r.reg.Each(func(name string, i interface{}) {
 		now := time.Now()
+
+		// Prefix the namespace with the host
+		name = host + name
 
 		switch m := i.(type) {
 		case metrics.Counter:
@@ -148,17 +167,17 @@ func (r *reporter) send() error {
 				Measurement: fmt.Sprintf("%s.timer", name),
 				Fields: map[string]interface{}{
 					"count":    m.Count(),
-					"max":      m.Max(),
-					"mean":     m.Mean(),
-					"min":      m.Min(),
-					"stddev":   m.StdDev(),
-					"variance": m.Variance(),
-					"p50":      ps[0],
-					"p75":      ps[1],
-					"p95":      ps[2],
-					"p99":      ps[3],
-					"p999":     ps[4],
-					"p9999":    ps[5],
+					"max":      m.Max() / time.Millisecond.Nanoseconds(),               // ms time
+					"mean":     m.Mean() / float64(time.Millisecond.Nanoseconds()),     // ms time
+					"min":      m.Min() / time.Millisecond.Nanoseconds(),               // ms time
+					"stddev":   m.StdDev() / float64(time.Millisecond.Nanoseconds()),   // ms time
+					"variance": m.Variance() / float64(time.Millisecond.Nanoseconds()), // ms time
+					"p50":      ps[0] / float64(time.Millisecond.Nanoseconds()),        // ms time
+					"p75":      ps[1] / float64(time.Millisecond.Nanoseconds()),        // ms time
+					"p95":      ps[2] / float64(time.Millisecond.Nanoseconds()),        // ms time
+					"p99":      ps[3] / float64(time.Millisecond.Nanoseconds()),        // ms time
+					"p999":     ps[4] / float64(time.Millisecond.Nanoseconds()),        // ms time
+					"p9999":    ps[5] / float64(time.Millisecond.Nanoseconds()),        // ms time
 					"m1":       m.Rate1(),
 					"m5":       m.Rate5(),
 					"m15":      m.Rate15(),
