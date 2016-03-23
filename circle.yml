@@ -1,5 +1,5 @@
 deployment:
-	release:
-        	tag: /[0-9]+(\.[0-9]+)*/
-		commands:
-			- "true"
+    release:
+        tag: /[0-9]+(\.[0-9]+)*/
+        commands: 
+            - "true"
